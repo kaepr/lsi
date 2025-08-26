@@ -2,8 +2,6 @@
 
 This repository is the source code from [t3x/lsi](https://t3x.org/lsi/).
 
-The book explains the implementation of an interactive Lisp system.
+The book explains the implementation of an interactive Lisp system. Source of the original implementation from the book is available from the above link.
 
-The source code from the book is already open sourced, refer the link above.
-
-This repository contains my implementation and notes etc.
+This repository contains my implementation, probably in Rust, notes etc. 
