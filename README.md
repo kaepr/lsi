@@ -1,7 +1,14 @@
 # Lisp9 Implementation
 
-This repository is the source code from [t3x/lsi](https://t3x.org/lsi/).
+Rust implementation from the book [t3x/lsi](https://t3x.org/lsi/).
 
 The book explains the implementation of an interactive Lisp system. Source of the original implementation from the book is available from the above link.
 
-This repository contains my implementation, probably in Rust, notes etc. 
+### Background
+
+The book [Lisp System Implementation](https://t3x.org/lsi/) is a tour through LISP9, a LISP bytecode compiler and interpreter. 
+
+I wanted to revise Rust, thus this repo contains the C implementation ported over to Rust.
+
+Still in progress ...
+
