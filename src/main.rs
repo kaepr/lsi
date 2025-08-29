@@ -1,3 +1,5 @@
+use std::mem;
+
 /// Heap image to be loaded by interpreter
 const IMAGEFILE: &str = "ls9.image";
 /// Source file to load, when no default image exists
@@ -26,6 +28,7 @@ struct Cell(i32);
 // struct TypeTag(i32);
 
 #[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TypeTag {
     Bytecode = -10,
     Catchtag = -11,
@@ -36,7 +39,7 @@ enum TypeTag {
     Outport = -16,
     String = -17,
     Symbol = -18,
-    Vector = -19
+    Vector = -19,
 }
 
 impl From<TypeTag> for Cell {
@@ -45,6 +48,7 @@ impl From<TypeTag> for Cell {
     }
 }
 
+#[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpecialObject {
     Nil = -1,
@@ -53,6 +57,12 @@ pub enum SpecialObject {
     Undef = -4,
     RParen = -5,
     Dot = -6,
+}
+
+impl SpecialObject {
+    pub fn value(self) -> isize {
+        self as isize
+    }
 }
 
 impl From<SpecialObject> for Cell {
@@ -73,13 +83,38 @@ impl From<Cell> for usize {
     }
 }
 
+trait LispObject {
+    fn is_special(&self) -> bool;
+}
+
+impl LispObject for Cell {
+    fn is_special(&self) -> bool {
+        self.value() < 0
+    }
+}
+
+impl LispObject for isize {
+    fn is_special(&self) -> bool {
+        *self < 0
+    }
+}
+
+impl LispObject for i32 {
+    fn is_special(&self) -> bool {
+        *self < 0
+    }
+}
+
+impl LispObject for usize {
+    fn is_special(&self) -> bool {
+        let v: i32 = (*self).try_into().unwrap();
+        v < 0
+    }
+}
+
 impl Cell {
     pub fn new(value: i32) -> Self {
         Cell(value)
-    }
-
-    pub fn is_special(&self) -> bool {
-        self.0 < 0
     }
 
     pub fn is_type_tag(&self) -> bool {
@@ -114,7 +149,7 @@ impl Cell {
             -17 => Some(TypeTag::String),
             -18 => Some(TypeTag::Symbol),
             -19 => Some(TypeTag::Vector),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -166,13 +201,13 @@ struct Node {
 }
 
 impl Node {
-   pub fn new(car: Cell, cdr: Cell, tag: Tag) -> Self {
-       Node {
-           car: car,
-           cdr: cdr,
-           tag: tag
-       }
-   }
+    pub fn new(car: Cell, cdr: Cell, tag: Tag) -> Self {
+        Node {
+            car: car,
+            cdr: cdr,
+            tag: tag,
+        }
+    }
 }
 
 struct Pool {
@@ -229,6 +264,119 @@ impl Pool {
         cell_value as *const *mut i32 as *const u8
     }
 
+    fn stringlen(&self, n: usize) -> usize {
+        let idx: usize = self.cdr(n).into();
+        self.vectors[idx - 1].into()
+    }
+
+    fn symname(&self, n: usize) -> *const u8 {
+        self.string(n)
+    }
+
+    fn symlen(&self, n: usize) -> usize {
+        self.stringlen(n)
+    }
+
+    fn vector(&self, n: usize) -> &Cell {
+        let idx: usize = self.cdr(n).into();
+        &self.vectors[idx]
+    }
+
+    fn veclink(&self, n: usize) -> Cell {
+        let idx: usize = self.cdr(n).into();
+        self.vectors[idx - 2]
+    }
+
+    fn veccndx(&self, n: usize) -> Cell {
+        self.veclink(n)
+    }
+
+    fn vecsize(k: usize) -> usize {
+        let cell_size = mem::size_of::<Cell>();
+        2 + ((k) + cell_size - 1) / cell_size
+    }
+
+    fn veclen(&self, n: usize) -> usize {
+        Pool::vecsize(self.stringlen(n)) - 2
+    }
+
+    fn is_char(&self, n: i32) -> bool {
+        !n.is_special()
+            && (self.tag(n as usize).has_flag(Tag::ATOM))
+            && (self.car(n as usize).as_type_tag() == Some(TypeTag::Char))
+    }
+
+    fn is_closure(&self, n: i32) -> bool {
+        !n.is_special()
+            && (self.tag(n as usize).has_flag(Tag::ATOM))
+            && (self.car(n as usize).as_type_tag() == Some(TypeTag::Closure))
+    }
+
+    fn is_ctag(&self, n: i32) -> bool {
+        !n.is_special()
+            && (self.tag(n as usize).has_flag(Tag::ATOM))
+            && (self.car(n as usize).as_type_tag() == Some(TypeTag::Catchtag))
+    }
+
+    fn is_eof(&self, n: i32) -> bool {
+        SpecialObject::EofMark.value() == n
+    }
+
+    fn is_fix(&self, n: i32) -> bool {
+        !n.is_special()
+            && (self.tag(n as usize).has_flag(Tag::ATOM))
+            && (self.car(n as usize).as_type_tag() == Some(TypeTag::Fixnum))
+    }
+
+    fn is_inport(&self, n: i32) -> bool {
+        !n.is_special()
+            && (self.tag(n as usize).has_flag(Tag::ATOM))
+            && (self.tag(n as usize).has_flag(Tag::PORT))
+            && (self.car(n as usize).as_type_tag() == Some(TypeTag::Inport))
+    }
+
+    fn is_outport(&self, n: i32) -> bool {
+        !n.is_special()
+            && (self.tag(n as usize).has_flag(Tag::ATOM))
+            && (self.tag(n as usize).has_flag(Tag::PORT))
+            && (self.car(n as usize).as_type_tag() == Some(TypeTag::Outport))
+    }
+
+    fn is_string(&self, n: i32) -> bool {
+        !n.is_special()
+            && (self.tag(n as usize).has_flag(Tag::VECTOR))
+            && (self.car(n as usize).as_type_tag() == Some(TypeTag::String))
+    }
+
+    fn is_symbol(&self, n: i32) -> bool {
+        !n.is_special()
+            && (self.tag(n as usize).has_flag(Tag::VECTOR))
+            && (self.car(n as usize).as_type_tag() == Some(TypeTag::Symbol))
+    }
+
+    fn is_vector(&self, n: i32) -> bool {
+        !n.is_special()
+            && (self.tag(n as usize).has_flag(Tag::VECTOR))
+            && (self.car(n as usize).as_type_tag() == Some(TypeTag::Vector))
+    }
+
+    fn is_atom(&self, n: i32) -> bool {
+        n.is_special()
+            || (self.tag(n as usize).has_flag(Tag::ATOM))
+            || (self.tag(n as usize).has_flag(Tag::VECTOR))
+    }
+
+    fn is_pair(&self, x: Cell) -> bool {
+        !self.is_atom(x.value())
+    }
+
+    fn is_list(&self, x: Cell) -> bool {
+        x.as_special() == Some(SpecialObject::Nil) || self.is_pair(x)
+    }
+
+    fn is_const(&self, n: i32) -> bool {
+        !n.is_special() && (self.tag(n as usize).has_flag(Tag::CONST))
+    }
 }
 
 enum Opcode {
@@ -384,7 +532,7 @@ enum Opcode {
     VSET,
     VSIZE,
     WHITEC,
-    WRITEC
+    WRITEC,
 }
 
 fn main() {
