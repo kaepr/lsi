@@ -319,7 +319,7 @@ impl Pool {
     }
 
     fn is_eof(&self, n: i32) -> bool {
-        SpecialObject::EofMark.value() == n
+        SpecialObject::EofMark.value() == n.try_into().unwrap()
     }
 
     fn is_fix(&self, n: i32) -> bool {
